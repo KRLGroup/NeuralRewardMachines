@@ -134,7 +134,7 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
         sequence_accuracy = []
         image_accuracy = []
 
-        # Balanced replay buffers: positive traces and zero-reward traces
+        # Balanced replay buffers: positive (contains any 1) and non-positive (only 0/-1)
         class TraceReplayBuffer:
             def __init__(self, capacity=2000):
                 self.capacity = capacity
@@ -154,21 +154,26 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
                 return [self.data[i] for i in idxs]
 
         positive_buffer = TraceReplayBuffer(capacity=3000)
-        zero_buffer = TraceReplayBuffer(capacity=3000)
-        # derive label ids for +1 and 0 rewards from env mapping if available
+        nonpos_buffer = TraceReplayBuffer(capacity=3000)
+        # derive label ids for +1, 0, -1 rewards from env mapping if available
         pos_label = None
         zero_label = None
+        neg_label = None
         if hasattr(env, 'rew_dictionary'):
             # env.rew_dictionary maps reward_value -> idx
             if 1 in env.rew_dictionary:
                 pos_label = env.rew_dictionary[1]
             if 0 in env.rew_dictionary:
                 zero_label = env.rew_dictionary[0]
+            if -1 in env.rew_dictionary:
+                neg_label = env.rew_dictionary[-1]
         # fallback reasonable defaults
         if pos_label is None:
             pos_label = 1
         if zero_label is None:
             zero_label = 0
+        if neg_label is None:
+            neg_label = -1
 
     optimizer = optim.Adam(params, lr=lr)
 
@@ -372,11 +377,11 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
             info_traj.append(curr_info)
 
             # Push into replay buffers
-            # Positive trace if any timestep has positive label; zero trace if all labels are zero
+            # Positive buffer if any timestep has label == 1; otherwise (only 0 and/or -1) goes to non-positive buffer
             if any(lbl == pos_label for lbl in curr_info):
                 positive_buffer.add(curr_traj, curr_info)
-            elif all(lbl == zero_label for lbl in curr_info):
-                zero_buffer.add(curr_traj, curr_info)
+            else:
+                nonpos_buffer.add(curr_traj, curr_info)
 
         if episode_idx % TT_policy == 0:
             log_probs_cat = torch.unsqueeze(log_probs_cat, dim=1)
@@ -398,7 +403,7 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
                 target_batch = 40  # number of traces to use for this training burst
                 half = target_batch // 2
                 pos_samples = positive_buffer.sample(half)
-                zero_samples = zero_buffer.sample(half)
+                zero_samples = nonpos_buffer.sample(half)
 
                 sampled = pos_samples + zero_samples
                 if len(sampled) >= 40:  # need at least one full batch for grounder
