@@ -7,7 +7,6 @@ import numpy as np
 from itertools import product
 
 class DFA:
-
   def __init__(self, arg1, arg2, arg3, dictionary_symbols = None):
       if dictionary_symbols == None:
           self.dictionary_symbols = list(range(self.num_of_symbols))
@@ -169,9 +168,12 @@ class DFA:
       s.view()
 
 class MooreMachine(DFA):
-    def __init__(self, arg1, arg2, arg3, reward = "distance", dictionary_symbols = None):
+    def __init__(self, arg1, arg2, arg3, reward="acceptance", dictionary_symbols=None):
+        # Initialize the base DFA first
         super().__init__(arg1, arg2, arg3, dictionary_symbols)
+        # Initialize rewards and compute them according to the chosen scheme
         self.rewards = [100 for _ in range(self.num_of_states)]
+        self.calculate_absorbing_states()
         if reward == "distance":
             for s in range(self.num_of_states):
                 if self.acceptance[s]:
@@ -193,7 +195,7 @@ class MooreMachine(DFA):
             for i in range(len(self.rewards)):
                 self.rewards[i] *= -1
             minimum = min([r for r in self.rewards if r != -100])
-            for i,r in enumerate(self.rewards):
+            for i, r in enumerate(self.rewards):
                 if r != -100:
                     self.rewards[i] = (r - minimum)
 
@@ -205,8 +207,32 @@ class MooreMachine(DFA):
                     self.rewards[i] = 100 * r/ maximum
             print("REWARDS:", self.rewards)
             #assert False
-
+        elif reward == "acceptance":
+            for s in range(self.num_of_states):
+                if self.acceptance[s]:
+                    self.rewards[s] = 1
+                else:
+                    self.rewards[s] = 0
+        elif reward == "three_value_acceptance":
+            for q in range(self.num_of_states):
+                #neutral states
+                if q not in self.absorbing_states:
+                    self.rewards[q] = 0
+                else:
+                    #winning state
+                    if self.acceptance[q]:
+                        self.rewards[q] = 1
+                    #failure state
+                    else:
+                        self.rewards[q] = -1
         else:
-            raise Exception("Reward based on '{}' NOT IMPLEMENTED".format(reward))
-
-
+            raise Exception("Reward based on '{}' NOT IMPLEMENTED, choose between ['acceptance', 'three_value_acceptance', 'distance']".format(reward))
+        
+    def calculate_absorbing_states(self):
+        self.absorbing_states = []
+        for q in range(self.num_of_states):
+            absorbing = True
+            for s in self.transitions[q].keys():
+                    absorbing = absorbing & (self.transitions[q][s] == q)
+            if absorbing:
+                self.absorbing_states.append(q)

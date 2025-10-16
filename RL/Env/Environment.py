@@ -38,7 +38,9 @@ class GridWorldEnv(gym.Env):
         self.window = None
         self.clock = None
         self.formula = formula
-        self.automaton = MooreMachine(self.formula[0], self.formula[1], self.formula[2], dictionary_symbols=self.dictionary_symbols)
+        self.automaton = MooreMachine(arg1=self.formula[0], arg2=self.formula[1], arg3=self.formula[2], 
+                                      reward = "three_value_acceptance", 
+                                      dictionary_symbols=self.dictionary_symbols)
 
         self.max_reward = 100 
         print("MAXIMUM REWARD:", self.max_reward)
