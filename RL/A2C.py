@@ -189,14 +189,7 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
 
             state = state.squeeze()
 
-        while not (done or truncated):
-            log_probs = []
-            values = []
-            rewards = []
-            masks = []
-            entropy = 0
-
-            if method == "nrm":
+        if method == "nrm":
                 curr_traj = []
                 curr_rew = []
                 curr_info = []
@@ -204,6 +197,13 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
                 curr_traj.append(raw_state)
                 curr_rew.append(reward)
                 curr_info.append(info)
+        while not (done or truncated):
+            log_probs = []
+            values = []
+            rewards = []
+            masks = []
+            entropy = 0
+
             # rollout trajectory
             for _ in range(num_steps):
                 #state = torch.tensor(state, dtype=torch.float32)
