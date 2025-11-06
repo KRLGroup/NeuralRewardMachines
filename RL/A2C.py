@@ -161,20 +161,33 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
         neg_label = None
         if hasattr(env, 'rew_dictionary'):
             # env.rew_dictionary maps reward_value -> idx
-            if 1 in env.rew_dictionary:
-                pos_label = env.rew_dictionary[1]
+            if 100 in env.rew_dictionary:
+                pos_label = env.rew_dictionary[100]
             if 0 in env.rew_dictionary:
                 zero_label = env.rew_dictionary[0]
-            if -1 in env.rew_dictionary:
-                neg_label = env.rew_dictionary[-1]
+            if -100 in env.rew_dictionary:
+                neg_label = env.rew_dictionary[-100]
         # fallback reasonable defaults
         if pos_label is None:
-            pos_label = 1
+            pos_label = 100
         if zero_label is None:
             zero_label = 0
         if neg_label is None:
-            neg_label = -1
-
+            neg_label = -100
+            
+        # # derive label ids for 100, and the rest rewards from env mapping if available
+        # pos_label = None
+        # other_label = None
+        # if hasattr(env, 'rew_dictionary'):
+        #     # env.rew_dictionary maps reward_value -> idx
+        #     if 100 in env.rew_dictionary:
+        #         pos_label = env.rew_dictionary[100]
+        # # fallback reasonable defaults
+        # if pos_label is None:
+        #     pos_label = 1
+        # if other_label is None:
+        #     other_label = list(range(0, 100))
+        
     optimizer = optim.Adam(params, lr=lr)
 
     # re-initialize episodes
@@ -231,6 +244,15 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
 
             state = state.squeeze()
 
+        if method == "nrm":
+            curr_traj = []
+            curr_rew = []
+            curr_info = []
+
+            curr_traj.append(raw_state)
+            curr_rew.append(reward)
+            curr_info.append(info)
+            
         while not (done or truncated):
             log_probs = []
             values = []
@@ -238,14 +260,6 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
             masks = []
             entropy = 0
 
-            if method == "nrm":
-                curr_traj = []
-                curr_rew = []
-                curr_info = []
-
-                curr_traj.append(raw_state)
-                curr_rew.append(reward)
-                curr_info.append(info)
             # rollout trajectory
             for _ in range(num_steps):
                 #state = torch.tensor(state, dtype=torch.float32)
