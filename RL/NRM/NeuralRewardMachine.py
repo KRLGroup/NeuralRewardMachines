@@ -107,30 +107,14 @@ class NeuralRewardMachine:
         #[1,0,0,0,0] pick
 
     def set_dataset(self, image_traj, rew_traj):
+        
+        dataset_acceptances = torch.LongTensor(rew_traj)
+        dataset_traces = torch.stack([torch.stack(inner) for inner in image_traj])
 
-        # print(len(rew_traj[0]))
-
-        dataset_traces = []
-        dataset_acceptances = torch.FloatTensor(rew_traj)
-        for i in range(len(image_traj)):
-            trace = []
-            for img in image_traj[i]:
-                trace.append(img)
-            trace_tensor = torch.stack(trace)
-            trace_tensor = torch.squeeze(trace_tensor)
-            dataset_traces.append(trace_tensor)
-
-        #train_traces, test_traces, train_acceptance_tr, test_acceptance_tr = train_test_split(dataset_traces, dataset_acceptances, train_size=1, shuffle=True)
-        train_traces, test_traces, train_acceptance_tr, test_acceptance_tr = (dataset_traces, dataset_traces, dataset_acceptances, dataset_acceptances)
-
-        train_img_seq, train_acceptance_img = create_batches_same_length(train_traces, train_acceptance_tr, 40)
-
-
-        test_img_seq_hard, test_acceptance_img_hard = train_img_seq, train_acceptance_img
-
-        image_seq_dataset = (train_img_seq, [], train_acceptance_img, test_img_seq_hard, [], test_acceptance_img_hard)
+        image_seq_dataset = ([dataset_traces], [], [dataset_acceptances], [dataset_traces], [], [dataset_acceptances])
         self.train_img_seq, self.train_traces, self.train_acceptance_img, self.test_img_seq_hard, self.test_traces, self.test_acceptance_img_hard = image_seq_dataset
-        return
+
+        return image_seq_dataset
 
 
     def eval_learnt_DFA(self, automa_implementation, temp, mode="dev"):
