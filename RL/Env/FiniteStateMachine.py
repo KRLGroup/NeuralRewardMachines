@@ -221,10 +221,10 @@ class MooreMachine(DFA):
                 else:
                     #winning state
                     if self.acceptance[q]:
-                        self.rewards[q] = 1
+                        self.rewards[q] = 100
                     #failure state
                     else:
-                        self.rewards[q] = -1
+                        self.rewards[q] = -100
         else:
             raise Exception("Reward based on '{}' NOT IMPLEMENTED, choose between ['acceptance', 'three_value_acceptance', 'distance']".format(reward))
         
