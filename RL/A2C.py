@@ -153,8 +153,7 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
 
         if method == "rm":
             state_dfa = torch.DoubleTensor(obs[0]).to(device)
-            state_env = torch.DoubleTensor(obs[1]).to(device)
-
+            state_env = torch.DoubleTensor(obs[1]).to(device).unsqueeze(0)
             if feature_extraction:
                 state_env = cnn(state_env.view(-1, 3, 64, 64))
             state = torch.cat((state_env, state_dfa.unsqueeze(0)), 1).squeeze()
@@ -222,8 +221,7 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
 
                 if method == "rm":
                     state_dfa = torch.DoubleTensor(next_state[0]).to(device)
-                    state_env = torch.DoubleTensor(next_state[1]).to(device)
-
+                    state_env = torch.DoubleTensor(next_state[1]).unsqueeze(0).to(device)
                     if feature_extraction:
                         state_env = cnn(state_env.view(-1, 3, 64, 64))
                     next_state = torch.cat((state_env, state_dfa.unsqueeze(0)), 1).squeeze()

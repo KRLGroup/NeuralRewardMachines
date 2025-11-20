@@ -111,7 +111,9 @@ class GridWorldEnv(gym.Env):
         #    self._render_frame()
         if self.state_type == "symbolic":
             if self.use_dfa_state:
-                observation = np.array(list(self._agent_location) + [self.curr_automaton_state])
+                one_hot_dfa_state = [0 for _ in range(self.automaton.num_of_states)]
+                one_hot_dfa_state[self.curr_automaton_state] = 1
+                observation = [one_hot_dfa_state, self._agent_location]
             else:
                 observation = np.array(list(self._agent_location))
         elif self.state_type == "image":
@@ -119,7 +121,9 @@ class GridWorldEnv(gym.Env):
                 one_hot_dfa_state = [0 for _ in range(self.automaton.num_of_states)]
                 one_hot_dfa_state[self.curr_automaton_state] = 1
                 #print("one_hot_dfa_state: ", one_hot_dfa_state)
-                observation = [np.array(one_hot_dfa_state), self.image_locations[self._agent_location[0], self._agent_location[1]]] #1 FULL Img, 0 Just the square the robot is in
+                observation = [np.array(one_hot_dfa_state),
+                               self.image_locations[self._agent_location[0],
+                                                    self._agent_location[1]]] #1 FULL Img, 0 Just the square the robot is in
             else:
                 observation = self.image_locations[self._agent_location[0], self._agent_location[1]]
         else:
@@ -180,7 +184,9 @@ class GridWorldEnv(gym.Env):
 
         if self.state_type == "symbolic":
             if self.use_dfa_state:
-                observation = np.array(list(self._agent_location) + [self.curr_automaton_state])
+                one_hot_dfa_state = [0 for _ in range(self.automaton.num_of_states)]
+                one_hot_dfa_state[self.curr_automaton_state] = 1
+                observation = [one_hot_dfa_state, self._agent_location]
             else:
                 observation = np.array(list(self._agent_location))
         elif self.state_type == "image":
