@@ -1,0 +1,8 @@
+matplotlib
+absl-py
+flloat
+seaborn
+pygame
+gym
+openai-gym
+scikit-learn
