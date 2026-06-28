@@ -54,7 +54,7 @@ def plot(source_1, source_2, task_category, destination, num_exp):
     sns.lineplot(x="variable", y="value", data=df1, label = "NRM+A2C")
     sns.lineplot(x="variable", y="value", data=df2, label = "RNN+A2C")
 
-    plt.title("Image enviroment, second task class", fontsize=17)
+    plt.title("Image environment, second task class", fontsize=17)
     plt.axhline(y=max_reward, color='r', linestyle='--')
     plt.tick_params(axis='both', which='both', labelsize=12)
     plt.xlabel("Episodes", fontsize=17)
@@ -70,6 +70,7 @@ def triple_plot(
     task_category,
     destination,
     num_exp,
+    env_category="Image",
     max_len=10000,
     smooth_window=100,
     stride=1,  # set >1 (e.g. 5 or 10) to further speed up / declutter
@@ -170,14 +171,14 @@ def triple_plot(
         plt.plot(x, mean3, label="RM+A2C")
         plt.fill_between(x, mean3 - std3, mean3 + std3, alpha=0.2)
 
-        plt.title(f"Image enviroment, task{title_count+1}", fontsize=17)
+        plt.title(f"{env_category} environment, task{title_count+1}", fontsize=17)
         plt.axhline(y=max_reward, color="r", linestyle="--")
         plt.tick_params(axis="both", which="both", labelsize=12)
         plt.xlabel("Episodes", fontsize=17)
         plt.ylabel("Rewards", fontsize=17)
         plt.legend(loc="lower right", fontsize=16)
 
-        out_path = os.path.join(destination, f"task{correct_indices[title_count]}_nrm_vs_rnn_vs_rm_image.png")
+        out_path = os.path.join(destination, f"task{correct_indices[title_count]}_nrm_vs_rnn_vs_rm_{env_category.lower()}.png")
         plt.savefig(out_path, bbox_inches="tight")
         plt.close()
 
@@ -188,6 +189,7 @@ def plot_sequence(
     category,
     destination,
     num_exp,
+    env_category="Image",
     max_len=10000,
     smooth_window=30,
     stride=1,  # set e.g. to 5 or 10 to speed up and declutter
@@ -273,7 +275,7 @@ def plot_sequence(
     plt.plot(x, mean_acc, label="Mean accuracy")
     plt.fill_between(x, mean_acc - std_acc, mean_acc + std_acc, alpha=0.2)
 
-    plt.title(f"Image enviroment, {category} task class", fontsize=17)
+    plt.title(f"{env_category} environment, {category} task class", fontsize=17)
     plt.axhline(y=max_reward, color="r", linestyle="--")
     plt.tick_params(axis="both", which="both", labelsize=12)
     plt.xlabel("Episodes", fontsize=17)
@@ -281,13 +283,269 @@ def plot_sequence(
     # no legend originally, but we could enable it if you like
     # plt.legend(loc="lower right", fontsize=16)
 
-    out_path = os.path.join(destination, f"{category}_class_sequence_classification_image.png")
+    out_path = os.path.join(destination, f"{category}_class_sequence_classification_{env_category.lower()}.png")
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close()
+    
+def plot_rewards(
+    source_1,
+    category,
+    destination,
+    num_exp,
+    env_category="Image",
+    max_len=10000,
+    smooth_window=30,
+    stride=1,  # set e.g. to 5 or 10 to speed up and declutter
+):
+    """
+    Plot smoothed reward prediction accuracy over episodes, aggregated across
+    tasks in the chosen category and across seeds.
+
+    Parameters
+    ----------
+    source_1 : str
+        Base directory containing task folders (task1, task2, ...).
+    category : str
+        "first" or "second" (selects which tasks to aggregate).
+    destination : str
+        Directory where the output plot is saved.
+    num_exp : int
+        Number of seeds / experiments per task.
+    max_len : int
+        Pad / truncate accuracy curves to this length before smoothing.
+    smooth_window : int
+        Moving average window size.
+    stride : int
+        Keep one every `stride` points when plotting.
+    """
+
+    if category == "first":
+        task_category = [0, 1, 2, 3]
+    elif category == "second":
+        task_category = [4, 5, 6, 7]
+    else:
+        raise ValueError(f"Unknown category: {category}")
+
+    # env / max_reward as in your original code
+    env = GridWorldEnv(formulas[0], "rgb_array", "symbolic", use_dfa_state=False, train=False)
+    max_reward = env.max_reward
+
+    smooth_kernel = np.ones(smooth_window, dtype=float) / smooth_window
+    all_curves = []
+
+    for idx, formula in enumerate(formulas):
+        if idx not in task_category:
+            continue
+
+        print(formula[2])
+        path_1 = os.path.join(source_1, formula[2])
+
+        for exp in range(num_exp):
+            acc_path = os.path.join(path_1, f"train_rewards_{exp}.txt")
+
+            # Load as float array
+            acc = np.loadtxt(acc_path, dtype=float)
+            acc = np.atleast_1d(acc).astype(float)
+
+            # pad / truncate to max_len
+            if acc.size < max_len:
+                acc = np.pad(acc, (0, max_len - acc.size), mode="edge")
+            elif acc.size > max_len:
+                acc = acc[:max_len]
+
+            # moving average smoothing
+            smoothed = np.convolve(acc, smooth_kernel, mode="valid")
+            all_curves.append(smoothed)
+
+    if not all_curves:
+        print("No curves found for the selected category; nothing to plot.")
+        return
+
+    results_1 = np.vstack(all_curves)  # shape: [num_curves, T]
+    T = results_1.shape[1]
+    x = np.arange(T)
+
+    mean_acc = results_1.mean(axis=0)
+    std_acc = results_1.std(axis=0)
+
+    # Optional downsampling
+    if stride > 1:
+        x = x[::stride]
+        mean_acc = mean_acc[::stride]
+        std_acc = std_acc[::stride]
+
+    plt.figure()
+    plt.plot(x, mean_acc, label="Mean rewards")
+    plt.fill_between(x, mean_acc - std_acc, mean_acc + std_acc, alpha=0.2)
+
+    plt.title(f"{env_category} environment, {category} task class", fontsize=17)
+    plt.axhline(y=max_reward, color="r", linestyle="--")
+    plt.tick_params(axis="both", which="both", labelsize=12)
+    plt.xlabel("Episodes", fontsize=17)
+    plt.ylabel("Rewards", fontsize=17)
+    # no legend originally, but we could enable it if you like
+    # plt.legend(loc="lower right", fontsize=16)
+
+    out_path = os.path.join(destination, f"{category}_class_rewards_{env_category.lower()}.png")
     plt.savefig(out_path, bbox_inches="tight")
     plt.close()
 
-SOURCE_PATH_NRM  = "Results/Results_NRM_Three_NoBuff"
-SOURCE_PATH_RNN  = "Results/Results_RNN_Three_NoBuff"
-SOURCE_PATH_RM   = "Results/Results_RM_Three_NoBuff"
+def plot_category_methods(
+    source_1,
+    source_2,
+    source_3,
+    category,
+    destination,
+    num_exp,
+    env_category="Image",
+    max_len=10000,
+    smooth_window=30,
+    stride=1,  # set >1 (e.g. 5 or 10) to speed up / declutter
+):
+    """
+    Plot smoothed reward accuracy over episodes, aggregated across:
+      - tasks in the chosen category ("first" / "second")
+      - seeds / experiments
+    for three different methods, each shown as a distinct line.
+
+    Parameters
+    ----------
+    source_1, source_2, source_3 : str
+        Base directories for the three methods (e.g. NRM+A2C, RNN+A2C, RM+A2C).
+    category : str
+        "first" or "second" (selects which tasks to aggregate).
+    destination : str
+        Directory where the output plot is saved.
+    num_exp : int
+        Number of seeds / experiments per task.
+    env_category : str
+        String used in the plot title and filename (e.g. "Image").
+    max_len : int
+        Pad / truncate reward curves to this length before smoothing.
+    smooth_window : int
+        Moving average window size.
+    stride : int
+        Keep one every `stride` points when plotting (for speed). 1 = no downsample.
+    """
+
+    if category == "first":
+        task_category = [0, 1, 2, 3]
+    elif category == "second":
+        task_category = [4, 5, 6, 7]
+    else:
+        raise ValueError(f"Unknown category: {category}")
+
+    # environment / max reward as in your original code
+    env = GridWorldEnv(formulas[0], "rgb_array", "symbolic", use_dfa_state=False, train=False)
+    max_reward = env.max_reward
+
+    smooth_kernel = np.ones(smooth_window, dtype=float) / smooth_window
+
+    def load_aggregated_method_curves(base_source: str) -> np.ndarray:
+        """
+        Load, pad, smooth, and stack all runs for a given method across:
+          - all tasks in `task_category`
+          - all seeds in range(num_exp)
+
+        Returns
+        -------
+        np.ndarray
+            Array of shape [num_curves, T], where num_curves = (#tasks * num_exp)
+            and T is the time dimension after smoothing.
+        """
+        all_curves = []
+
+        for idx, formula in enumerate(formulas):
+            if idx not in task_category:
+                continue
+
+            task_name = formula[2]
+            print(f"[{base_source}] Task: {task_name}")
+            task_path = os.path.join(base_source, task_name)
+
+            for exp in range(num_exp):
+                reward_path = os.path.join(task_path, f"train_rewards_{exp}.txt")
+
+                # load as 1D float array
+                rewards = np.loadtxt(reward_path, dtype=float)
+                rewards = np.atleast_1d(rewards).astype(float)
+
+                # pad / truncate to max_len
+                if rewards.size < max_len:
+                    rewards = np.pad(rewards, (0, max_len - rewards.size), mode="edge")
+                elif rewards.size > max_len:
+                    rewards = rewards[:max_len]
+
+                # moving average smoothing
+                smoothed = np.convolve(rewards, smooth_kernel, mode="valid")
+                all_curves.append(smoothed)
+
+        if not all_curves:
+            return np.empty((0, max_len - smooth_window + 1), dtype=float)
+
+        return np.vstack(all_curves)
+
+    # load & aggregate for each method
+    results_1 = load_aggregated_method_curves(source_1)
+    results_2 = load_aggregated_method_curves(source_2)
+    results_3 = load_aggregated_method_curves(source_3)
+
+    if results_1.size == 0 or results_2.size == 0 or results_3.size == 0:
+        print("No curves found for one or more methods in the selected category; nothing to plot.")
+        return
+
+    # all have same T because of same padding/smoothing
+    T = results_1.shape[1]
+    x = np.arange(T)
+
+    # average + std over all curves (tasks × seeds)
+    mean1, std1 = results_1.mean(axis=0), results_1.std(axis=0)
+    mean2, std2 = results_2.mean(axis=0), results_2.std(axis=0)
+    mean3, std3 = results_3.mean(axis=0), results_3.std(axis=0)
+
+    # optional downsampling
+    if stride > 1:
+        x = x[::stride]
+        mean1, std1 = mean1[::stride], std1[::stride]
+        mean2, std2 = mean2[::stride], std2[::stride]
+        mean3, std3 = mean3[::stride], std3[::stride]
+
+    plt.figure()
+
+    # method 1
+    plt.plot(x, mean1, label="NRM+A2C")
+    plt.fill_between(x, mean1 - std1, mean1 + std1, alpha=0.2)
+
+    # method 2
+    plt.plot(x, mean2, label="RNN+A2C")
+    plt.fill_between(x, mean2 - std2, mean2 + std2, alpha=0.2)
+
+    # method 3
+    plt.plot(x, mean3, label="RM+A2C")
+    plt.fill_between(x, mean3 - std3, mean3 + std3, alpha=0.2)
+
+    plt.title(f"{env_category} environment, {category} task class", fontsize=17)
+    plt.axhline(y=max_reward, color="r", linestyle="--")
+    plt.tick_params(axis="both", which="both", labelsize=12)
+    plt.xlabel("Episodes", fontsize=17)
+    plt.ylabel("Rewards", fontsize=17)
+    plt.legend(loc="lower right", fontsize=16)
+
+    out_path = os.path.join(
+        destination,
+        f"{category}_class_nrm_vs_rnn_vs_rm_{env_category.lower()}.png",
+    )
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close()
+
+
+SOURCE_PATH_NRM_IMAGE  = "Results/Results_NRM_Three_NoBuff"
+SOURCE_PATH_RNN_IMAGE  = "Results/Results_RNN_Three_NoBuff"
+SOURCE_PATH_RM_IMAGE   = "Results/Results_RM_Three_NoBuff"
+
+SOURCE_PATH_NRM_MAP  = "Results/Results_NRM_Three_Map_NoBuff"
+SOURCE_PATH_RNN_MAP  = "Results/Results_RNN_Three_Map_NoBuff"
+SOURCE_PATH_RM_MAP   = "Results/Results_RM_Three_Map_NoBuff"
 DESTINATION_PATH = "Plots/"
 
 TASKS = [0, 1, 2, 3, 4, 5, 6, 7]
@@ -295,6 +553,42 @@ TASKS = [0, 1, 2, 3, 4, 5, 6, 7]
 if not os.path.exists(DESTINATION_PATH):
     os.makedirs(DESTINATION_PATH)
 
-triple_plot(SOURCE_PATH_NRM, SOURCE_PATH_RNN, SOURCE_PATH_RM, TASKS, DESTINATION_PATH, 5)
-plot_sequence(SOURCE_PATH_NRM, "first", DESTINATION_PATH, 5)
-plot_sequence(SOURCE_PATH_NRM, "second", DESTINATION_PATH, 5)
+triple_plot(SOURCE_PATH_NRM_IMAGE, SOURCE_PATH_RNN_IMAGE, SOURCE_PATH_RM_IMAGE, TASKS, DESTINATION_PATH, 5, env_category="Image")
+plot_category_methods(
+    SOURCE_PATH_NRM_IMAGE,
+    SOURCE_PATH_RNN_IMAGE,
+    SOURCE_PATH_RM_IMAGE,
+    "first",
+    DESTINATION_PATH,
+    5,
+    env_category="Image"
+)
+plot_category_methods(
+    SOURCE_PATH_NRM_IMAGE,
+    SOURCE_PATH_RNN_IMAGE,
+    SOURCE_PATH_RM_IMAGE,
+    "second",
+    DESTINATION_PATH,
+    5,
+    env_category="Image"
+)
+
+triple_plot(SOURCE_PATH_NRM_MAP, SOURCE_PATH_RNN_MAP, SOURCE_PATH_RM_MAP, TASKS, DESTINATION_PATH, 5, env_category="Map")
+plot_category_methods(
+    SOURCE_PATH_NRM_MAP,
+    SOURCE_PATH_RNN_MAP,
+    SOURCE_PATH_RM_MAP,
+    "first",
+    DESTINATION_PATH,
+    5,
+    env_category="Map"
+)
+plot_category_methods(
+    SOURCE_PATH_NRM_MAP,
+    SOURCE_PATH_RNN_MAP,
+    SOURCE_PATH_RM_MAP,
+    "second",
+    DESTINATION_PATH,
+    5,
+    env_category="Map"
+)
