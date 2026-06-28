@@ -2,6 +2,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
+from .sequence_models.s4 import S4Block
+
 class ActorCritic(nn.Module):
     def __init__(self, num_inputs, num_outputs, hidden_size, std=0.0):
         super(ActorCritic, self).__init__()
@@ -87,3 +89,37 @@ class RNN(nn.Module):
     
     def forward(self, x, h, c):
         return self.rnn(x, (h, c))
+
+
+class S4Encoder(nn.Module):
+    """Sequence encoder that swaps the LSTM for an S4 (S4D/diagonal) layer.
+
+    Used as a drop-in alternative to RNN in the A2C loop: it consumes one
+    observation per timestep in recurrent (step) mode, carrying the SSM state
+    across the episode. The S4 kernels are implemented in float32 while the rest
+    of NRM runs in float64, so the module is kept single precision and the input
+    and output are cast at the boundary.
+    """
+
+    def __init__(self, input_size, d_model, d_state):
+        super(S4Encoder, self).__init__()
+        self.d_model = d_model
+        self.input_proj = nn.Linear(input_size, d_model)
+        self.s4 = S4Block(d_model, mode='diag', transposed=False, d_state=d_state)
+        self.activation = nn.GELU()
+
+    def init_state(self, batch):
+        # setup_step discretizes the SSM (dA, dB, dC) from the current parameters.
+        # It must be recomputed every episode: the optimizer updates the underlying
+        # parameters in place between episodes, which would otherwise invalidate the
+        # cached step matrices for backprop.
+        self.s4.setup_step()
+        return self.s4.default_state(batch)
+
+    def forward_step(self, x, state):
+        # x: (batch, input_size) -> output: (batch, d_model)
+        in_dtype = x.dtype
+        x = self.input_proj(x.float())
+        y, state = self.s4.step(x, state)
+        y = self.activation(y)
+        return y.to(in_dtype), state

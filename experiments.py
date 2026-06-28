@@ -8,7 +8,7 @@ from RL.A2C import recurrent_A2C
 from plot import plot
 
 #flags
-absl.flags.DEFINE_string("METHOD", "rnn", "Method to test, one in ['rnn', 'nrm', 'rm'], default= 'rnn' ")
+absl.flags.DEFINE_string("METHOD", "rnn", "Method to test, one in ['rnn', 's4', 'nrm', 'rm'], default= 'rnn' ")
 absl.flags.DEFINE_string("ENV", "map_env", "Environment to test, one in ['map_env', 'image_env'], default= 'map_env' ")
 absl.flags.DEFINE_string("LOG_DIR", "Results/", "path where to save the results, default='Results/'")
 absl.flags.DEFINE_integer("NUM_EXPERIMENTS", 5, "num of runs for each test, default= 5")
@@ -28,6 +28,8 @@ def launch_experiments(path, formula, experiment, env_type, method):
         feature_extraction = True
 
     if method == 'rnn':
+        use_dfa_state = False
+    elif method == 's4':
         use_dfa_state = False
     elif method == 'nrm':
         use_dfa_state = False

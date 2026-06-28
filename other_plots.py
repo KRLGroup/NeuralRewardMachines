@@ -54,7 +54,7 @@ def plot(source_1, source_2, task_category, destination, num_exp):
     sns.lineplot(x="variable", y="value", data=df1, label = "NRM+A2C")
     sns.lineplot(x="variable", y="value", data=df2, label = "RNN+A2C")
 
-    plt.title("Image enviroment, second task class", fontsize=17)
+    plt.title("Image environment, second task class", fontsize=17)
     plt.axhline(y=max_reward, color='r', linestyle='--')
     plt.tick_params(axis='both', which='both', labelsize=12)
     plt.xlabel("Episodes", fontsize=17)
@@ -119,7 +119,7 @@ def triple_plot(source_1, source_2, source_3, task_category, destination, num_ex
             sns.lineplot(x="variable", y="value", data=df2, label = "RNN+A2C")
             sns.lineplot(x="variable", y="value", data=df3, label = "RM+A2C")
 
-            plt.title(f"Image enviroment, task{title_count}", fontsize=17)
+            plt.title(f"Image environment, task{title_count}", fontsize=17)
             plt.axhline(y=max_reward, color='r', linestyle='--')
             plt.tick_params(axis='both', which='both', labelsize=12)
             plt.xlabel("Episodes", fontsize=17)
@@ -158,7 +158,7 @@ def plot_sequence(source_1, task_category, destination, num_exp):
 
     sns.lineplot(x="variable", y="value", data=df1)
 
-    plt.title("Image enviroment, second task class", fontsize=17)
+    plt.title("Image environment, second task class", fontsize=17)
     plt.axhline(y=max_reward, color='r', linestyle='--')
     plt.tick_params(axis='both', which='both', labelsize=12)
     plt.xlabel("Episodes", fontsize=17)
