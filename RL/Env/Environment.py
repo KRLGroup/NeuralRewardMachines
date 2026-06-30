@@ -15,7 +15,7 @@ transforms = torchvision.transforms.Compose([
 class GridWorldEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, formula, render_mode="human", state_type = "symbolic", use_dfa_state=True, train=True, size=4):
+    def __init__(self, formula, render_mode="human", state_type = "symbolic", use_dfa_state=True, train=True, size=4, reward="three_value_acceptance"):
         self.dictionary_symbols = ['P', 'L', 'D', 'G', 'E' ]
         self._PICKAXE = "RL/Env/imgs/pickaxe.png"
         self._GEM = "RL/Env/imgs/gem.png"
@@ -38,8 +38,8 @@ class GridWorldEnv(gym.Env):
         self.window = None
         self.clock = None
         self.formula = formula
-        self.automaton = MooreMachine(arg1=self.formula[0], arg2=self.formula[1], arg3=self.formula[2], 
-                                      reward = "three_value_acceptance", 
+        self.automaton = MooreMachine(arg1=self.formula[0], arg2=self.formula[1], arg3=self.formula[2],
+                                      reward = reward,
                                       dictionary_symbols=self.dictionary_symbols)
 
         self.max_reward = 100 

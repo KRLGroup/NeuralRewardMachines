@@ -20,11 +20,17 @@ experiments.py:
     (default: 'map_env')
   --LOG_DIR: path where to save the results, default='Results/'
     (default: 'Results/')
-  --METHOD: Method to test, one in ['rnn', 'nrm', 'rm'], default= 'rnn'
+  --METHOD: Method to test, one in ['rnn', 's4', 'nrm', 'rm'], default= 'rnn'
     (default: 'rnn')
   --NUM_EXPERIMENTS: num of runs for each test, default= 5
     (default: '5')
     (an integer)
+  --REWARD: reward scheme of the Moore machine, one in ['distance',
+    'acceptance', 'three_value_acceptance'], default= 'three_value_acceptance'
+    (default: 'three_value_acceptance')
+  --[no]USE_REPLAY_BUFFER: for 'nrm', train the grounder via balanced replay
+    buffers (True) or on the worst recent trajectories (False), default= False
+    (default: 'false')
 ```
 ## Citations
 ```

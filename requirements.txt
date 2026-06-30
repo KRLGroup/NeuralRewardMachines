@@ -6,3 +6,5 @@ pygame
 gym
 openai-gym
 scikit-learn
+scipy
+einops

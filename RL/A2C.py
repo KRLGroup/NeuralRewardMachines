@@ -75,7 +75,7 @@ def prepare_dataset(sequence_accuracy, image_trajectory, info_trajectory, TT):
     return worst_trajectories, worst_related_info
 
 
-def recurrent_A2C(env, path, experiment, method, feature_extraction):
+def recurrent_A2C(env, path, experiment, method, feature_extraction, use_replay_buffer=True):
     #recurrency =
     #       - 'rnn'     (rnn+A2C)
     #       - 'nrm'     (grounding+A2C)
@@ -145,47 +145,48 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
         sequence_accuracy = []
         image_accuracy = []
 
-        # Balanced replay buffers: positive (contains any 1) and non-positive (only 0/-1)
-        class TraceReplayBuffer:
-            def __init__(self, capacity=2000):
-                self.capacity = capacity
-                self.data = deque(maxlen=capacity)
+        if use_replay_buffer:
+            # Balanced replay buffers: positive (contains any 1) and non-positive (only 0/-1)
+            class TraceReplayBuffer:
+                def __init__(self, capacity=2000):
+                    self.capacity = capacity
+                    self.data = deque(maxlen=capacity)
 
-            def add(self, traj, labels):
-                # traj: list[Tensor], labels: list[int]
-                self.data.append((traj, labels))
+                def add(self, traj, labels):
+                    # traj: list[Tensor], labels: list[int]
+                    self.data.append((traj, labels))
 
-            def __len__(self):
-                return len(self.data)
+                def __len__(self):
+                    return len(self.data)
 
-            def sample(self, n):
-                if len(self.data) == 0:
-                    return []
-                idxs = np.random.choice(len(self.data), size=min(n, len(self.data)), replace=False)
-                return [self.data[i] for i in idxs]
+                def sample(self, n):
+                    if len(self.data) == 0:
+                        return []
+                    idxs = np.random.choice(len(self.data), size=min(n, len(self.data)), replace=False)
+                    return [self.data[i] for i in idxs]
 
-        positive_buffer = TraceReplayBuffer(capacity=3000)
-        nonpos_buffer = TraceReplayBuffer(capacity=3000)
-        # derive label ids for +1, 0, -1 rewards from env mapping if available
-        pos_label = None
-        zero_label = None
-        neg_label = None
-        if hasattr(env, 'rew_dictionary'):
-            # env.rew_dictionary maps reward_value -> idx
-            if 100 in env.rew_dictionary:
-                pos_label = env.rew_dictionary[100]
-            if 0 in env.rew_dictionary:
-                zero_label = env.rew_dictionary[0]
-            if -100 in env.rew_dictionary:
-                neg_label = env.rew_dictionary[-100]
-        # fallback reasonable defaults
-        if pos_label is None:
-            pos_label = 100
-        if zero_label is None:
-            zero_label = 0
-        if neg_label is None:
-            neg_label = -100
-            
+            positive_buffer = TraceReplayBuffer(capacity=3000)
+            nonpos_buffer = TraceReplayBuffer(capacity=3000)
+            # derive label ids for +1, 0, -1 rewards from env mapping if available
+            pos_label = None
+            zero_label = None
+            neg_label = None
+            if hasattr(env, 'rew_dictionary'):
+                # env.rew_dictionary maps reward_value -> idx
+                if 100 in env.rew_dictionary:
+                    pos_label = env.rew_dictionary[100]
+                if 0 in env.rew_dictionary:
+                    zero_label = env.rew_dictionary[0]
+                if -100 in env.rew_dictionary:
+                    neg_label = env.rew_dictionary[-100]
+            # fallback reasonable defaults
+            if pos_label is None:
+                pos_label = 100
+            if zero_label is None:
+                zero_label = 0
+            if neg_label is None:
+                neg_label = -100
+
         # # derive label ids for 100, and the rest rewards from env mapping if available
         # pos_label = None
         # other_label = None
@@ -406,12 +407,13 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
             rew_traj.append(curr_rew)
             info_traj.append(curr_info)
 
-            # Push into replay buffers
-            # Positive buffer if any timestep has label == 1; otherwise (only 0 and/or -1) goes to non-positive buffer
-            if any(lbl == pos_label for lbl in curr_info):
-                positive_buffer.add(curr_traj, curr_info)
-            else:
-                nonpos_buffer.add(curr_traj, curr_info)
+            if use_replay_buffer:
+                # Push into replay buffers
+                # Positive buffer if any timestep has label == 1; otherwise (only 0 and/or -1) goes to non-positive buffer
+                if any(lbl == pos_label for lbl in curr_info):
+                    positive_buffer.add(curr_traj, curr_info)
+                else:
+                    nonpos_buffer.add(curr_traj, curr_info)
 
         if episode_idx % TT_policy == 0:
             log_probs_cat = torch.unsqueeze(log_probs_cat, dim=1)
@@ -429,17 +431,24 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
 
         if method == "nrm":
             if episode_idx % TT_grounder == 0:
-                # Balanced sampling from replay buffers
-                target_batch = 40  # number of traces to use for this training burst
-                half = target_batch // 2
-                pos_samples = positive_buffer.sample(half)
-                zero_samples = nonpos_buffer.sample(half)
+                if use_replay_buffer:
+                    # Balanced sampling from replay buffers
+                    target_batch = 40  # number of traces to use for this training burst
+                    half = target_batch // 2
+                    pos_samples = positive_buffer.sample(half)
+                    zero_samples = nonpos_buffer.sample(half)
 
-                sampled = pos_samples + zero_samples
-                if len(sampled) >= 40:  # need at least one full batch for grounder
-                    bat_traj = [traj for (traj, labels) in sampled]
-                    bat_labels = [labels for (traj, labels) in sampled]
-                    grounder.set_dataset(bat_traj, bat_labels)
+                    sampled = pos_samples + zero_samples
+                    if len(sampled) >= 40:  # need at least one full batch for grounder
+                        bat_traj = [traj for (traj, labels) in sampled]
+                        bat_labels = [labels for (traj, labels) in sampled]
+                        grounder.set_dataset(bat_traj, bat_labels)
+                        grounder.train_symbol_grounding(grounder_epochs)
+                else:
+                    # Train on the worst (lowest sequence-accuracy) trajectories collected since last burst
+                    worst_trajectories, worst_related_info = prepare_dataset(
+                        sequence_accuracy[-TT_grounder:], image_traj, info_traj, TT_grounder)
+                    grounder.set_dataset(worst_trajectories, worst_related_info)
                     grounder.train_symbol_grounding(grounder_epochs)
 
                 # clear episodic collectors, keep buffers for future sampling

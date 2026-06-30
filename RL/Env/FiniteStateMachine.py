@@ -172,9 +172,7 @@ class MooreMachine(DFA):
         # Initialize the base DFA first
         super().__init__(arg1, arg2, arg3, dictionary_symbols)
         # Initialize rewards and compute them according to the chosen scheme
-        # Initialize rewards and compute them according to the chosen scheme
         self.rewards = [100 for _ in range(self.num_of_states)]
-        self.calculate_absorbing_states()
         self.calculate_absorbing_states()
         if reward == "distance":
             for s in range(self.num_of_states):
@@ -198,7 +196,6 @@ class MooreMachine(DFA):
                 self.rewards[i] *= -1
             minimum = min([r for r in self.rewards if r != -100])
             for i, r in enumerate(self.rewards):
-            for i, r in enumerate(self.rewards):
                 if r != -100:
                     self.rewards[i] = (r - minimum)
 
@@ -210,24 +207,6 @@ class MooreMachine(DFA):
                     self.rewards[i] = 100 * r/ maximum
             print("REWARDS:", self.rewards)
             #assert False
-        elif reward == "acceptance":
-            for s in range(self.num_of_states):
-                if self.acceptance[s]:
-                    self.rewards[s] = 1
-                else:
-                    self.rewards[s] = 0
-        elif reward == "three_value_acceptance":
-            for q in range(self.num_of_states):
-                #neutral states
-                if q not in self.absorbing_states:
-                    self.rewards[q] = 0
-                else:
-                    #winning state
-                    if self.acceptance[q]:
-                        self.rewards[q] = 100
-                    #failure state
-                    else:
-                        self.rewards[q] = -100
         elif reward == "acceptance":
             for s in range(self.num_of_states):
                 if self.acceptance[s]:
