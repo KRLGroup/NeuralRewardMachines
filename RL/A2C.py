@@ -5,8 +5,9 @@ import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 from statistics import mean
+from collections import deque
 
-from .NN_models import ActorCritic, RNN, Net
+from .NN_models import ActorCritic, RNN, Net, S4Encoder
 from .NRM.NeuralRewardMachine import NeuralRewardMachine
 from .NRM.utils import eval_acceptance
 use_cuda = torch.cuda.is_available()
@@ -28,6 +29,10 @@ num_layers  = 2
 # hyper params:
 hidden_size = 120 #of a2c
 rnn_hidden_size = 50 #of rnn
+
+# S4 sequence encoder (S4D/diagonal): d_model matches rnn_hidden_size for parity
+s4_d_model = rnn_hidden_size
+s4_d_state = 64
 
 # slidind window
 slide_wind = 100
@@ -97,6 +102,8 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
     # Initializing the Actor critic model
     if method == "rnn":
         model = ActorCritic(rnn_hidden_size, num_outputs, hidden_size).to(device)
+    elif method == "s4":
+        model = ActorCritic(s4_d_model, num_outputs, hidden_size).to(device)
     else:#"nrm" o "rm"
         model = ActorCritic(num_inputs + env.automaton.num_of_states, num_outputs, hidden_size).to(device)
     params += list(model.parameters())
@@ -106,6 +113,11 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
         rnn=RNN(num_inputs, rnn_hidden_size, num_layers).to(device)
         rnn.double()
         params += list(rnn.parameters())
+    elif method == "s4":
+        # S4 kernels run in float32: keep the encoder single precision and cast
+        # observations/outputs at the boundary (see S4Encoder.forward_step)
+        s4_encoder = S4Encoder(num_inputs, s4_d_model, s4_d_state).to(device)
+        params += list(s4_encoder.parameters())
     elif method == "nrm":
         f = open(path + "/sequence_classification_accuracy_" + str(experiment) + ".txt", "w")
         f.close()
@@ -133,6 +145,60 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
         sequence_accuracy = []
         image_accuracy = []
 
+        # Balanced replay buffers: positive (contains any 1) and non-positive (only 0/-1)
+        class TraceReplayBuffer:
+            def __init__(self, capacity=2000):
+                self.capacity = capacity
+                self.data = deque(maxlen=capacity)
+
+            def add(self, traj, labels):
+                # traj: list[Tensor], labels: list[int]
+                self.data.append((traj, labels))
+
+            def __len__(self):
+                return len(self.data)
+
+            def sample(self, n):
+                if len(self.data) == 0:
+                    return []
+                idxs = np.random.choice(len(self.data), size=min(n, len(self.data)), replace=False)
+                return [self.data[i] for i in idxs]
+
+        positive_buffer = TraceReplayBuffer(capacity=3000)
+        nonpos_buffer = TraceReplayBuffer(capacity=3000)
+        # derive label ids for +1, 0, -1 rewards from env mapping if available
+        pos_label = None
+        zero_label = None
+        neg_label = None
+        if hasattr(env, 'rew_dictionary'):
+            # env.rew_dictionary maps reward_value -> idx
+            if 100 in env.rew_dictionary:
+                pos_label = env.rew_dictionary[100]
+            if 0 in env.rew_dictionary:
+                zero_label = env.rew_dictionary[0]
+            if -100 in env.rew_dictionary:
+                neg_label = env.rew_dictionary[-100]
+        # fallback reasonable defaults
+        if pos_label is None:
+            pos_label = 100
+        if zero_label is None:
+            zero_label = 0
+        if neg_label is None:
+            neg_label = -100
+            
+        # # derive label ids for 100, and the rest rewards from env mapping if available
+        # pos_label = None
+        # other_label = None
+        # if hasattr(env, 'rew_dictionary'):
+        #     # env.rew_dictionary maps reward_value -> idx
+        #     if 100 in env.rew_dictionary:
+        #         pos_label = env.rew_dictionary[100]
+        # # fallback reasonable defaults
+        # if pos_label is None:
+        #     pos_label = 1
+        # if other_label is None:
+        #     other_label = list(range(0, 100))
+        
     optimizer = optim.Adam(params, lr=lr)
 
     # re-initialize episodes
@@ -164,6 +230,9 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
                 # Initialize hidden and cell states
                 h_0 = torch.zeros(num_layers, rnn_hidden_size).to(device).double()
                 c_0 = torch.zeros(num_layers, rnn_hidden_size).to(device).double()
+            elif method == "s4":
+                # initialize the recurrent SSM state for the episode
+                s4_state = s4_encoder.init_state(1)
             elif method == "nrm":
                 # initialize deep automa state
                 state_automa = np.zeros( num_of_states)
@@ -179,6 +248,8 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
         if method == "rnn":
             out, (h_0, c_0) = rnn(state.unsqueeze(0), h_0, c_0)
             state = out
+        elif method == "s4":
+            state, s4_state = s4_encoder.forward_step(state.unsqueeze(0), s4_state)
         elif method == "nrm":
             state_grounding = grounder.classifier(raw_state.unsqueeze(0))
             next_state_automa, reward_automa = grounder.deepAutoma.step(state_automa.unsqueeze(0), state_grounding, 1.0)
@@ -242,6 +313,8 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
                     if method == "rnn":
                         out, (h_0, c_0) = rnn(next_state.unsqueeze(0), h_0, c_0)
                         next_state = out
+                    elif method == "s4":
+                        next_state, s4_state = s4_encoder.forward_step(next_state.unsqueeze(0), s4_state)
                     elif method == "nrm":
                         state_grounding = grounder.classifier(raw_state.unsqueeze(0))
 
@@ -332,6 +405,13 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
             rew_traj.append(curr_rew)
             info_traj.append(curr_info)
 
+            # Push into replay buffers
+            # Positive buffer if any timestep has label == 1; otherwise (only 0 and/or -1) goes to non-positive buffer
+            if any(lbl == pos_label for lbl in curr_info):
+                positive_buffer.add(curr_traj, curr_info)
+            else:
+                nonpos_buffer.add(curr_traj, curr_info)
+
         if episode_idx % TT_policy == 0:
             log_probs_cat = torch.unsqueeze(log_probs_cat, dim=1)
             actor_loss = -(log_probs_cat * advantage_cat).mean()
@@ -348,12 +428,20 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
 
         if method == "nrm":
             if episode_idx % TT_grounder == 0:
-                worst_trajectories, worst_related_info = prepare_dataset(sequence_accuracy[-TT_grounder:], image_traj,
-                                                                         info_traj, TT_grounder)
-                grounder.set_dataset(worst_trajectories, worst_related_info)
+                # Balanced sampling from replay buffers
+                target_batch = 40  # number of traces to use for this training burst
+                half = target_batch // 2
+                pos_samples = positive_buffer.sample(half)
+                zero_samples = nonpos_buffer.sample(half)
 
-                grounder.train_symbol_grounding(grounder_epochs)
+                sampled = pos_samples + zero_samples
+                if len(sampled) >= 40:  # need at least one full batch for grounder
+                    bat_traj = [traj for (traj, labels) in sampled]
+                    bat_labels = [labels for (traj, labels) in sampled]
+                    grounder.set_dataset(bat_traj, bat_labels)
+                    grounder.train_symbol_grounding(grounder_epochs)
 
+                # clear episodic collectors, keep buffers for future sampling
                 image_traj = []
                 rew_traj = []
                 info_traj = []
