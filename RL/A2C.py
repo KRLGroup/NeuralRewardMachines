@@ -260,13 +260,14 @@ def recurrent_A2C(env, path, experiment, method, feature_extraction):
             state = state.squeeze()
 
         if method == "nrm":
-                curr_traj = []
-                curr_rew = []
-                curr_info = []
+            curr_traj = []
+            curr_rew = []
+            curr_info = []
 
-                curr_traj.append(raw_state)
-                curr_rew.append(reward)
-                curr_info.append(info)
+            curr_traj.append(raw_state)
+            curr_rew.append(reward)
+            curr_info.append(info)
+            
         while not (done or truncated):
             log_probs = []
             values = []
